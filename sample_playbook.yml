@@ -1,0 +1,27 @@
+- name: Gather facts for RGWs
+  hosts: ceph-rgw
+  become: yes
+  gather_facts: true
+
+- name: Install nginx cache server
+  hosts: ceph-mon
+  become: yes
+  pre_tasks:
+    - name: Gather RGWs hosts
+      set_fact:
+        oss_rgws_server_list : "{{ ( oss_rgws_server_list | default( [] ) ) + [ oss_rgws_address_template ] }}"
+      with_items: '{{ groups["ceph-rgw"] }}'
+      vars:
+        oss_rgws_address_template: '{{ hostvars[item]["<desired_interface>"]["ipv4"]["address"] }}'
+  roles:
+    - role: ansible-role-rgw-nginx-module
+      vars:
+        access_key: ""
+        secret_key: ""
+        oss_rgws: "{{ oss_rgws_server_list }}"
+        cache_servers:
+          - "<server_1>"
+          - "<server_2>"
+          - "<server_3>"
+        cache_size: "20G"
+

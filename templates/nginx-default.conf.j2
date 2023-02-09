@@ -1,0 +1,211 @@
+#max_size means that Nginx will not cache more than 20G, It should be tuned to a larger number if the /data/cache is bigger
+proxy_cache_path {{ cache_path }} levels={{ cache_level }} max_size={{ cache_max_size }} keys_zone=mycache:999m inactive={{ cache_timeout }} use_temp_path=off;
+lua_code_cache on;
+
+upstream caches {
+{% if use_ketama | bool %}
+    ketama_chash    $uri;
+{% endif %}
+    # List of all nginx cache servers (ips or resolvable names)
+{% for server in cache_servers %}
+    server {{ server }}:{{ cache_server_port }} max_fails=2 fail_timeout=5s;
+{% endfor %}
+{% for item in nginx_upstream_options %}
+    {{ item }};{{''}}
+{% endfor %}
+}
+
+upstream rgws {
+    # List of all rgws (ips or resolvable names)
+{% for rgw in oss_rgws %}
+{% for port in rgw_port %}
+    server {{ rgw }}:{{ port }} max_fails=2 fail_timeout=5s;
+{% endfor %}
+{% endfor %}
+{% for item in nginx_upstream_options %}
+    {{ item }};{{''}}
+{% endfor %}
+}
+
+
+
+server {
+    listen       {{ cache_server_port }} {% for opt in nginx_server_listen_options %} {{ opt+" " }} {% endfor %};
+    server_name  {{ nginx_cache_server_name }};
+{% for item in nginx_server_options %}
+    {{ item }};{{''}}
+{% endfor %}
+    location /authentication {
+        internal;
+        client_max_body_size 500M;
+        proxy_pass http://rgws$request_uri;
+        proxy_pass_request_body off;
+        proxy_set_header Host $host;
+        # setting x-rgw-auth allow the RGW the ability to only authorize the request without fetching the obj data 
+        proxy_set_header x-rgw-auth "yes";
+        proxy_set_header Authorization $http_authorization;
+        proxy_http_version 1.1;
+        proxy_method $request_method;
+        # Do not convert HEAD requests into GET requests
+        proxy_cache_convert_head off;
+        error_page 404 = @outage;
+        proxy_intercept_errors on;
+        if ($request_uri = "/") {
+            return 200;
+        }
+        # URI included with question mark is not being cached
+        if ($request_uri ~* (\?)) {
+            return 200;
+        }
+        if ($request_method = "PUT") {
+            return 200;
+        }
+        if ($request_method = "POST") {
+            return 200;
+        }
+        if ($request_method = "HEAD") {
+            return 200;
+        }
+        if ($request_method = "COPY") {
+            return 200;
+        }
+        if ($request_method = "DELETE") {
+            return 200;
+        }
+        if ($http_if_match) {
+            return 200;
+        }
+        if ($http_authorization !~* "aws4_request") {
+            return 200;
+        }
+    }
+    location @outage{
+        return 403;
+    }
+    location / {
+        auth_request /authentication;
+        proxy_pass http://rgws;
+        set $authvar '';
+        # if $do_not_cache is not empty the request would not be cached, this is relevant for list op for example
+        set $do_not_cache '';
+        # the IP or name of the RGWs
+        rewrite_by_lua_file /etc/nginx/nginx-lua-file.lua;
+        #proxy_set_header Authorization $http_authorization;
+        # my cache configured at the top of the file
+        proxy_cache mycache;
+        proxy_cache_lock_timeout 0s;
+        proxy_cache_lock_age 1000s;
+        proxy_http_version 1.1;
+        set $date $aws_auth_date;
+        # Getting 403 if this header not set
+        proxy_set_header Host $host;
+        # Cache all 200 OK's for 1 day
+        proxy_cache_valid 200 206 1d;
+        # Use stale cache file in all errors from upstream if we can
+        proxy_cache_use_stale updating;
+        proxy_cache_background_update on;
+        # Try to check if etag have changed, if yes, do not re-fetch from rgw the object
+        proxy_cache_revalidate on;
+        # Lock the cache so that only one request can populate it at a time
+        proxy_cache_lock on;
+        # prevent conversion of head requests to get requests
+        proxy_cache_convert_head off;
+        # Listing all buckets should not be cached 
+        if ($request_uri = "/") {
+            set $do_not_cache "no";
+            set $date $http_x_amz_date;
+        }
+        # URI including question mark are not supported to prevent bucket listing cache
+        if ($request_uri ~* (\?)) {
+            set $do_not_cache "no";
+            set $date $http_x_amz_date;
+        }
+        # Only aws4 requests are being cached - As the aws auth module supporting only aws v2
+        if ($http_authorization !~* "aws4_request") {
+            set $date $http_x_amz_date;
+        }
+        if ($request_method = "PUT") {
+            set $date $http_x_amz_date;
+        }
+        if ($request_method = "POST") {
+            set $date $http_x_amz_date;
+        }
+        if ($request_method = "HEAD") {
+            set $do_not_cache "no";
+            set $date $http_x_amz_date;
+        }
+        if ($request_method = "COPY") {
+            set $do_not_cache "no";
+            set $date $http_x_amz_date;
+        }
+        if ($http_if_match) {
+            #set $do_not_cache "no";
+            set $date $http_x_amz_date;
+            set $myrange $http_range;
+        }
+        if ($request_method = "DELETE") {
+            set $do_not_cache "no";
+            set $date $http_x_amz_date;
+        }
+        proxy_set_header if_match $http_if_match;
+        proxy_set_header Range $myrange;
+        # Use the original x-amz-date if the aws auth module didn't create one 
+        proxy_set_header x-amz-date $date;
+        proxy_set_header X-Amz-Cache $authvar;
+        proxy_no_cache $do_not_cache;
+        proxy_set_header Authorization $awsauthfour;
+        # This is on which content the nginx to use for hashing the cache keys 
+        proxy_cache_key "$request_uri$request_method$request_body$myrange";
+        client_max_body_size 500M;
+    }
+}
+
+
+# load balancer 
+server {
+    listen      {{ service_ip }}:{{ service_port }} {% for opt in nginx_server_listen_options %} {{ opt+" " }} {% endfor %};
+    server_name  LB;
+{% for item in nginx_server_options %}
+    {{ item }};{{''}}
+{% endfor %}
+#    access_log off;
+#    error_log off;
+    location ~* \.(jpg|jpeg|gif|png|bmp|ico|pdf|flv|swf|exe|html|htm|txt|css|js) {
+        proxy_pass http://caches;
+        proxy_pass_request_headers on;
+        proxy_set_header Host $host;
+        client_max_body_size 500M;
+    }
+    location / {
+        proxy_pass http://rgws;
+        proxy_pass_request_headers on;
+        proxy_set_header Host $host;
+        client_max_body_size 500M;
+    }
+}
+
+
+
+{% if setup_nginx_exporter | bool %}
+server{
+
+    listen       {{ nginx_exporter_port }};
+    server_name  metrics;
+    location /metrics {
+        stub_status on;
+    }
+}
+{% endif %}
+
+{% if enable_monitoring | bool %}
+server{
+
+    listen       {{ nginx_monitoring_port }};
+    server_name  status;
+    location /status {
+        vhost_traffic_status_display;
+        vhost_traffic_status_display_format html;
+    }
+}
+{% endif %}
+

@@ -1,0 +1,28 @@
+---
+- name: Remove old nginx config file
+  block:
+    - name: Delete conf.d direcotry and its content
+      file:
+        path: "{{ nginx_config_dir }}/conf.d"
+        state: absent
+
+    - name: Create empty conf.d directory
+      file:
+        path: "{{ nginx_config_dir }}/conf.d"
+        state: directory
+
+- name: Drop nginx config file
+  template:
+    src: "nginx.conf.j2"
+    dest: "{{ nginx_config_dir }}/nginx.conf"
+
+- name: Drop nginx lua config file
+  template:
+    src: "nginx-lua-file.lua.j2"
+    dest: "{{ nginx_config_dir }}/nginx-lua-file.lua"
+
+- name: Drop nginx default config file
+  template:
+    src: "nginx-default.conf.j2"
+    dest: "{{ nginx_config_dir }}/conf.d/nginx-default.conf"
+

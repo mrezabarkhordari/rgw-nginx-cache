@@ -1,0 +1,16 @@
+---
+- name: Adding APT repository key
+  when: ansible_os_family == 'Debian'
+  apt_key:
+    url: "http://nginx.org/keys/nginx_signing.key"
+
+- name: Add official APT repository
+  when: ansible_os_family == 'Debian'
+  ansible.builtin.apt_repository:
+    repo: "deb http://nginx.org/packages/{{ansible_distribution|lower}}/ {{ansible_distribution_release}} nginx"
+
+- name: Install latest version of nginx
+  apt:
+    update_cache: yes
+    name: "{{ nginx_package }}"
+    state: present

@@ -1,0 +1,85 @@
+---
+- name: Create /data directory
+  ansible.builtin.file:
+    path: "/data"
+    state: directory
+
+- name: Create Nginx user
+  ansible.builtin.user:
+    name: nginx
+    system: true
+    create_home: false
+    shell: "/bin/false"
+
+- name: Download and Untar the source of Openresty
+  ansible.builtin.unarchive:
+    src: https://openresty.org/download/openresty-1.15.8.3.tar.gz
+    dest: "{{ working_directry }}"
+    remote_src: yes
+
+- name: Clone the AWS auth Nginx module
+  ansible.builtin.git:
+    repo: https://github.com/kaltura/nginx-aws-auth-module
+    dest: "{{ working_directry }}/nginx-aws-auth-module"
+
+- name: Clone Ketama repo
+  git:
+    repo: https://github.com/flygoast/ngx_http_upstream_ketama_chash.git
+    dest: "{{ working_directry }}/ngx_http_upstream_ketama_chash"
+
+- name: Clone vts module
+  git:
+    repo: https://github.com/vozlt/nginx-module-vts.git
+    dest: "{{ working_directry }}/nginx-module-vts"
+
+- name: Make sure that pcre lib and openssl lib are installed 
+  ansible.builtin.apt:
+    update_cache: yes
+    pkg:
+    - libpcre3-dev
+    - libssl-dev
+    - build-essential
+    - curl
+    - zlib1g-dev
+
+# remove and install nginx
+- include_tasks: remove_nginx.yml
+  when: "{{ remove_nginx }}"
+- include_tasks: install_nginx.yml
+
+- name: Config compile of openresty
+  command:
+  args:
+    chdir: "{{ openresty_dir }}"
+    argv: "{{ ngxin_modules }}"
+
+- name: Make openresty
+  shell: make -j $(nproc)
+  args:
+    chdir: "{{ openresty_dir }}"
+
+- name: Install openresty
+  shell: make install
+  become: yes
+  args:
+    chdir: "{{ openresty_dir }}"
+
+- name: Get location of nginx binary
+  shell: which nginx
+  become: yes
+  register: nginx_binary
+
+- name:  Make link of openresty
+  file:
+    src: /usr/local/openresty/bin/openresty
+    dest: "/usr/sbin/nginx"
+    state: link
+    force: true
+
+- include_tasks: config_nginx.yml
+
+- name: Run Nginx(openresty)
+  service:
+    name: nginx
+    state: restarted
+
