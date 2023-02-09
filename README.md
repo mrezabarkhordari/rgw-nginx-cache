@@ -10,7 +10,7 @@ All variables which can be overridden are stored in defaults/main.yml file.
 To setup nginx exporter enable it through default/main.yml
 and after that yout can run nginx_exporter and prometheus using docker
 
-### Nginx Exporter
+## Nginx Exporter
 
 docker run \
   -p 9113:9113 -d \
