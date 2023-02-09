@@ -2,9 +2,13 @@
 
 based on: https://docs.ceph.com/en/quincy/radosgw/rgw-cache/
 
+Ansible Role to install nginx as cache server for Ceph RGW
+
+## Role Variables
+All variables which can be overridden are stored in defaults/main.yml file.
 
 To setup nginx exporter enable it through default/main.yml
-and after that need to run nginx_exporter and prometheus using docker
+and after that yout can run nginx_exporter and prometheus using docker
 
 ### Nginx Exporter
 
