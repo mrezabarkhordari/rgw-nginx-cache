@@ -23,3 +23,34 @@ docker run \
     -v /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml \
     prom/prometheus
 
+
+## Example
+# Playbook
+```
+- name: Gather facts for RGWs
+  hosts: ceph-rgw
+  become: yes
+  gather_facts: true
+
+- name: Install nginx cache server
+  hosts: ceph-rgw
+  become: yes
+  pre_tasks:
+    - name: Gather RGWs hosts
+      set_fact:
+        oss_rgws_server_list : "{{ ( oss_rgws_server_list | default( [] ) ) + [ oss_rgws_address_template ] }}"
+      with_items: '{{ groups["ceph-rgw"] }}'
+      vars:
+        oss_rgws_address_template: '{{ hostvars[item]["ansible_public"]["ipv4"]["address"] }}'
+
+    - name: Gather Cache hosts
+      set_fact:
+        oss_cache_server_list : "{{ ( oss_cache_server_list | default( [] ) ) + [ oss_cache_address_template ] }}"
+      with_items: '{{ groups["ceph-rgw"] }}'
+      vars:
+        oss_cache_address_template: '{{ hostvars[item]["ansible_public"]["ipv4"]["address"] }}'
+
+  roles:
+    - role: ansible-role-rgw-nginx-module
+
+```
