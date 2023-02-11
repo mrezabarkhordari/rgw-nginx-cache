@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  authors: Mohammadreza Barkhordari <mrz.barkhordari@gmail.com>, Vahideh Alinouri<vahideh.alinouri@gmail.com>
+  description: Deploy nginx for Ceph RGW cache server
+  role_name: rgw-nginx-cache
+  company: none
+  min_ansible_version: 2.7
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - bionic
+  galaxy_tags:
+    - nginx
+    - ceph-rgw
+    - rgw
+    - cache
+    - ceph
