@@ -41,16 +41,16 @@ docker run \
         oss_rgws_server_list : "{{ ( oss_rgws_server_list | default( [] ) ) + [ oss_rgws_address_template ] }}"
       with_items: '{{ groups["ceph-rgw"] }}'
       vars:
-        oss_rgws_address_template: '{{ hostvars[item]["ansible_public"]["ipv4"]["address"] }}'
+        oss_rgws_address_template: '{{ hostvars[item]["<desired_interface>"]["ipv4"]["address"] }}'
 
     - name: Gather Cache hosts
       set_fact:
         oss_cache_server_list : "{{ ( oss_cache_server_list | default( [] ) ) + [ oss_cache_address_template ] }}"
       with_items: '{{ groups["ceph-rgw"] }}'
       vars:
-        oss_cache_address_template: '{{ hostvars[item]["ansible_public"]["ipv4"]["address"] }}'
+        oss_cache_address_template: '{{ hostvars[item]["<desired_interface>"]["ipv4"]["address"] }}'
 
   roles:
-    - role: ansible-role-rgw-nginx-module
+    - role: rgw-nginx-module
 
 ```
