@@ -51,6 +51,6 @@ docker run \
         oss_cache_address_template: '{{ hostvars[item]["<desired_interface>"]["ipv4"]["address"] }}'
 
   roles:
-    - role: rgw-nginx-module
+    - role: rgw-nginx-cache
 
 ```
